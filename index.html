@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام تتبع التمارين</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --bg: #f1f5f9;
+        }
+        body { font-family: sans-serif; background: var(--bg); padding: 15px; margin: 0; direction: rtl; }
+        .exercise-card {
+            background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .exercise-header { display: flex; justify-content: space-between; align-items: center; }
+        .btn-group { display: flex; gap: 10px; margin: 15px 0; }
+        
+        /* تصميم الدوائر */
+        .status-container { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+        .circle {
+            width: 35px; height: 35px; border-radius: 50%; border: 2px solid #cbd5e1;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; position: relative; cursor: pointer;
+        }
+        .circle.video { border-color: #f59e0b; color: #f59e0b; }
+        .circle.photo { border-color: #3b82f6; color: #3b82f6; }
+        .circle.completed { background: var(--success); border-color: var(--success); color: white; }
+        .circle.completed::after { content: "✓"; }
+
+        button { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-search { background: var(--primary); color: white; }
+        .btn-camera { background: #4b5563; color: white; }
+        
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="app"></div>
+
+    <script>
+        const exercises = [
+            { id: 1, name: "Brisk Walking", type: "LISS" },
+            { id: 2, name: "Assisted Nordic Curl", type: "Compound" },
+            { id: 3, name: "Assisted Shrimp Squat", type: "Compound" },
+            { id: 4, name: "Assisted Single-Arm Row", type: "Compound" },
+            { id: 5, name: "Bench Dip (Straight)", type: "Isolation" }
+        ];
+
+        // تهيئة البيانات (تخزين التقدم في المتصفح)
+        let progress = JSON.parse(localStorage.getItem('exerciseProgress')) || {};
+
+        function render() {
+            const app = document.getElementById('app');
+            app.innerHTML = exercises.map(ex => {
+                const state = progress[ex.id] || { photos: 0, videos: 0 };
+                return `
+                <div class="exercise-card">
+                    <div class="exercise-header">
+                        <h3>${ex.name}</h3>
+                        <small>${ex.type}</small>
+                    </div>
+                    
+                    <div class="btn-group">
+                        <button class="btn-search" onclick="search('${ex.name} ${ex.type}')">بحث الصور</button>
+                        <button class="btn-camera" onclick="triggerCamera(${ex.id})">فتح الكاميرا الكاملة</button>
+                    </div>
+
+                    <div class="status-container">
+                        <span>الصور:</span>
+                        ${[1, 2, 3].map(i => `
+                            <div class="circle photo ${state.photos >= i ? 'completed' : ''}" 
+                                 onclick="${state.photos >= i ? `deleteTask(${ex.id}, 'photos')` : ''}">
+                                ${state.photos >= i ? '' : 'P'}
+                            </div>
+                        `).join('')}
+                        
+                        <span style="margin-right:10px">الفيديو:</span>
+                        ${[1, 2].map(i => `
+                            <div class="circle video ${state.videos >= i ? 'completed' : ''}"
+                                 onclick="${state.videos >= i ? `deleteTask(${ex.id}, 'videos')` : ''}">
+                                ${state.videos >= i ? '' : 'V'}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function search(query) {
+            window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`, '_blank');
+        }
+
+        let currentActiveEx = null;
+        function triggerCamera(exId) {
+            currentActiveEx = exId;
+            // إنشاء مدخل ملف مؤقت لفتح كاميرا الهاتف
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*,video/*';
+            input.capture = 'environment'; // لفتح الكاميرا الخلفية مباشرة
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    saveFile(exId, file);
+                }
+            };
+            input.click();
+        }
+
+        function saveFile(exId, file) {
+            if (!progress[exId]) progress[exId] = { photos: 0, videos: 0 };
+            
+            if (file.type.startsWith('image')) {
+                if (progress[exId].photos < 3) progress[exId].photos++;
+                else alert("اكتمل عدد الصور لهذا التمرين");
+            } else if (file.type.startsWith('video')) {
+                if (progress[exId].videos < 2) progress[exId].videos++;
+                else alert("اكتمل عدد الفيديوهات لهذا التمرين");
+            }
+
+            // محاكاة حفظ الملف: في المتصفح يتم تحميل الملف كأننا حفظناه في الجهاز
+            downloadFile(file, exId);
+            
+            localStorage.setItem('exerciseProgress', JSON.stringify(progress));
+            render();
+        }
+
+        function downloadFile(file, exId) {
+            const exName = exercises.find(e => e.id === exId).name;
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(file);
+            a.download = `${exName}/${file.name}`; // المتصفح سيقترح الاسم، لكن التنظيم المجلدي الدقيق يحدده المستخدم عند الحفظ
+            a.click();
+        }
+
+        function deleteTask(exId, type) {
+            if (confirm("هل تريد حذف هذا الإنجاز؟")) {
+                if (progress[exId][type] > 0) {
+                    progress[exId][type]--;
+                    localStorage.setItem('exerciseProgress', JSON.stringify(progress));
+                    render();
+                }
+            }
+        }
+
+        render();
+    </script>
+</body>
+</html>
